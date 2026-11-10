@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import { Button, LineEdit, CheckBox, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component BluetoothTestPage inherits Rectangle {
+    in property <string> status;
+    in property <bool> can-connect;
+    in property <bool> can-cancel;
+    in property <bool> configure;
+    private property <string> address;
+    private property <bool> consent: false;
+    callback connect(string, bool);
+    callback cancel();
+    background: Theme.background;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        Text {
+            text: "LIVI / Real Bluetooth connection test";
+            color: Theme.text;
+            font-size: 28px;
+            font-weight: 700;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Selected already-paired phone only. Clicking Connect authorizes one real Bluetooth attempt. Never approve a new pairing request.";
+            color: Theme.text-secondary;
+            font-size: 18px;
+            wrap: word-wrap;
+        }
+        if root.configure: VerticalLayout {
+            spacing: 10px;
+            Text {
+                text: "Already-paired Android phone / Classic Bluetooth address (not saved)";
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+            LineEdit {
+                text <=> root.address;
+                placeholder-text: "AA:BB:CC:DD:EE:FF";
+                enabled: root.can-connect;
+            }
+            CheckBox {
+                text: "My phone is already paired. I authorize one real Bluetooth-only attempt.";
+                checked <=> root.consent;
+                enabled: root.can-connect;
+            }
+        }
+        Rectangle {
+            min-height: 180px;
+            background: Theme.surface;
+            border-color: Theme.primary;
+            border-width: 1px;
+            border-radius: 8px;
+            ScrollView {
+                x: 12px;
+                y: 12px;
+                width: parent.width - 24px;
+                height: parent.height - 24px;
+                content-width: self.visible-width;
+                Text {
+                    width: parent.width;
+                    text: root.status;
+                    color: Theme.text;
+                    font-size: 22px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Button {
+                text: "Connect to selected paired phone";
+                enabled: root.can-connect && (!root.configure || (root.consent && root.address != ""));
+                clicked => { root.connect(root.address, root.consent); }
+            }
+            Button {
+                text: "Cancel / disconnect";
+                enabled: root.can-cancel;
+                clicked => { root.cancel(); }
+            }
+        }
+        Text {
+            text: "One RFCOMM connection and one WPP version exchange, then disconnect. 60-second limit plus 2-second cleanup. Closing this window cancels and waits for cleanup.";
+            color: Theme.text-secondary;
+            font-size: 17px;
+            wrap: word-wrap;
+        }
+        Rectangle { vertical-stretch: 1; background: transparent; }
+        Text {
+            text: "Bluetooth-only — no core, helper, Wi-Fi credentials, TCP listener, media or projection startup. Identity labels are not authentication. Wireless Android Auto remains NOT READY.";
+            color: #ffb86c;
+            font-size: 17px;
+            wrap: word-wrap;
+        }
+    }
+}

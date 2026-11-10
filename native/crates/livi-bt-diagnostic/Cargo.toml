@@ -1,0 +1,21 @@
+[package]
+name = "livi-bt-diagnostic"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[features]
+default = []
+bluetooth-diagnostic = ["livi-native-bluetooth/paired-diagnostic"]
+
+[[bin]]
+name = "livi-bt-diagnostic"
+path = "src/main.rs"
+required-features = ["bluetooth-diagnostic"]
+
+[dependencies]
+livi-native-bluetooth = { path = "../livi-native-bluetooth" }
+livi-aa-proto.workspace = true
+prost.workspace = true
+libc.workspace = true

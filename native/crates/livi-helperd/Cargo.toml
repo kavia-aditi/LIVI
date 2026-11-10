@@ -1,0 +1,38 @@
+[package]
+name = "livi-helperd"
+version = "0.1.0"
+edition.workspace = true
+
+[[bin]]
+name = "livi-helperd"
+path = "src/main.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("isolated-helper"))'] }
+
+[dependencies]
+livi-runtime.workspace = true
+livi-wifi.workspace = true
+livi-net.workspace = true
+iap2-csm.workspace = true
+iap2-mfi = { workspace = true, features = ["files"] }
+iap2-link.workspace = true
+livi-aa.workspace = true
+livi-link-host.workspace = true
+iap2-usbmux.workspace = true
+iap2-wired.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+serde_json.workspace = true
+libc.workspace = true
+nusb.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+livi-bt-host.workspace = true
+livi-hfp.workspace = true
+livi-native-handoff = { path = "../livi-native-handoff" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+livi-aa = { workspace = true, features = ["offline-admission-test-support"] }

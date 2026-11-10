@@ -1,0 +1,47 @@
+Description: 
+v4l2codecs: Add GST_VIDEO_FORMAT_NV12_128C8 support
+
+The format is used by the Raspberry Pi HEVC decoder.
+ .
+ gst-plugins-bad1.0 (1.26.2-3) unstable; urgency=medium
+ .
+   * d/patches: 0001-h266parser-Fix-overflow-when-parsing-subpic_level_in.patch
+     - Fix CVE-2025-6663 (Closes: #1108973)
+       Fix overflow when parsing subpic_level_info in H.266 parser
+Author: Marc Leeman <marc.leeman@gmail.com>
+Bug-Debian: https://bugs.debian.org/1108973
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout https://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: (upstream|backport|vendor|other), (<patch-url>|commit:<commit-id>)
+Bug: <upstream-bugtracker-url>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: (no|not-needed|<patch-forwarded-url>)
+Applied-Upstream: <version>, (<commit-url>|commit:<commid-id>)
+Reviewed-By: <name and email of someone who approved/reviewed the patch>
+Last-Update: 2026-02-11
+
+--- a/sys/v4l2codecs/gstv4l2format.c
++++ b/sys/v4l2codecs/gstv4l2format.c
+@@ -55,6 +55,7 @@ static const GstV4l2FormatDesc gst_v4l2_
+   {V4L2_PIX_FMT_MM21,             GST_VIDEO_FORMAT_NV12_16L32S,     DRM_FORMAT_INVALID, DRM_FORMAT_MOD_INVALID, 0},
+   {V4L2_PIX_FMT_SUNXI_TILED_NV12, GST_VIDEO_FORMAT_NV12_32L32,      DRM_FORMAT_INVALID, DRM_FORMAT_MOD_INVALID, 0},
+   {V4L2_PIX_FMT_NV12_4L4,         GST_VIDEO_FORMAT_NV12_4L4,        DRM_FORMAT_INVALID, DRM_FORMAT_MOD_INVALID, 0},
++  {V4L2_PIX_FMT_NV12MT_COL128,    GST_VIDEO_FORMAT_NV12_128C8,      DRM_FORMAT_INVALID, DRM_FORMAT_MOD_INVALID, 0},
+   {V4L2_PIX_FMT_NC12,             GST_VIDEO_FORMAT_UNKNOWN,         DRM_FORMAT_NV12,    DRM_FORMAT_MOD_BROADCOM_SAND128, 2},
+   {V4L2_PIX_FMT_NV12,             GST_VIDEO_FORMAT_NV12,            DRM_FORMAT_INVALID, DRM_FORMAT_MOD_INVALID, 0},
+   {V4L2_PIX_FMT_YUV420M,          GST_VIDEO_FORMAT_I420,            DRM_FORMAT_INVALID, DRM_FORMAT_MOD_INVALID, 0},
+--- a/sys/v4l2codecs/gstv4l2format.h
++++ b/sys/v4l2codecs/gstv4l2format.h
+@@ -37,6 +37,7 @@
+     "NV12_16L32S, " \
+     "NV12_32L32, " \
+     "NV12_4L4, " \
++    "NV12_128C8, " \
+     "NV12, " \
+     "I420, " \
+     "}"

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.f-io.livi.paired-discovery</string>
+    <key>CFBundleName</key>
+    <string>LIVI Paired Discovery</string>
+    <key>CFBundleDisplayName</key>
+    <string>LIVI Paired Discovery</string>
+    <key>CFBundleExecutable</key>
+    <string>LIVI</string>
+    <key>CFBundleIconFile</key>
+    <string>livi.icns</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>10.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>10.1.0</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>LIVI reads the names and addresses of devices already paired with this Mac for an informational Devices list.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>LIVI requires camera access for CarPlay.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>LIVI requires microphone access for voice control.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>LIVI talks to a LIVI Link dongle on the local network.</string>
+</dict>
+</plist>

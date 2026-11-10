@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIVI · Media routing demo</title>
+<style>
+:root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; --teal: #00adad; --muted: #a4b2bd; --line: #293a44; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #090f14; color: #f3f6f8; }
+main { max-width: 1340px; margin: auto; padding: 32px 26px; }
+button, input { font: inherit; }
+button { color: inherit; cursor: pointer; background: #18252e; border: 1px solid var(--line); border-radius: 12px; padding: 10px 15px; }
+button:hover:not(:disabled) { background: #204048; border-color: var(--teal); }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #6aeee2; outline-offset: 4px; }
+button:disabled, input:disabled { opacity: .35; cursor: not-allowed; }
+button[aria-pressed="true"] { background: #123b40; border-color: var(--teal); color: #80f3e5; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 28px; }
+.brand { font-size: 25px; font-weight: 850; letter-spacing: .2em; }
+.brand span { color: var(--teal); }
+.badge { border: 1px solid #28575c; background: #123036; color: #85e9de; padding: 6px 12px; border-radius: 24px; font-size: 12px; }
+.eyebrow { color: #70ded4; font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+h1 { font-size: clamp(30px, 4vw, 46px); line-height: 1.12; letter-spacing: -.035em; margin: 12px 0 18px; }
+h2, h3, p { margin-top: 0; }
+.intro { max-width: 810px; color: var(--muted); margin-bottom: 26px; }
+kbd { background: #253640; border: 1px solid #4a606d; border-radius: 5px; padding: 2px 6px; color: white; }
+.workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 24px; align-items: start; }
+.scenarios { display: grid; gap: 10px; }
+.scenarios button { text-align: left; padding: 15px; }
+.scenarios strong, .scenarios small { display: block; }
+.scenarios small { color: var(--muted); margin-top: 5px; font-size: 12px; }
+.screen { border: 1px solid #364750; border-radius: 24px; overflow: hidden; background: #000; box-shadow: 0 24px 60px #0005; }
+.screen-top { display: flex; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #222; color: var(--muted); font-size: 13px; }
+.tabs { display: flex; gap: 10px; padding: 16px 24px 0; }
+[hidden] { display: none !important; }
+.player { padding: 32px; }
+.content { display: grid; grid-template-columns: 1fr 210px; align-items: center; gap: 28px; min-height: 230px; }
+#track { font-size: clamp(25px, 3vw, 38px); line-height: 1.2; font-weight: 800; }
+#artist { color: #d1d8dc; margin-bottom: 6px; }
+#album { color: var(--muted); font-size: 14px; }
+.art { display: grid; place-content: center; text-align: center; height: 210px; border-radius: 28px; background: #151c22; color: #8296a3; font-size: 12px; }
+.art .note { font-size: 68px; color: #4a6773; }
+.art.loaded { background: radial-gradient(ellipse at 85% 10%, #e9ba68, transparent 55%), linear-gradient(145deg, #096e70, #133d51 60%, #08151e); color: #fff; letter-spacing: .15em; }
+.art.loaded .note { color: #bdfff0; }
+.controls { display: flex; justify-content: center; gap: 24px; padding: 28px 0 22px; }
+.controls button { width: 58px; height: 58px; border-radius: 50%; font-size: 24px; padding: 0; }
+.controls #play { width: 68px; height: 68px; margin-top: -5px; background: #086d70; }
+.progress { display: flex; align-items: center; gap: 15px; font: 12px ui-monospace, monospace; color: var(--muted); }
+input[type="range"] { flex: 1; min-width: 60px; accent-color: var(--teal); }
+#seek-note { text-align: center; color: var(--muted); font-size: 12px; margin: 14px 0 0; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.facts span { border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 12px; color: #c1d3dd; }
+.bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.panel { background: #111b23; border: 1px solid var(--line); border-radius: 18px; padding: 20px; }
+.panel h3 { font-size: 16px; margin-bottom: 10px; }
+.panel p { font-size: 13px; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#layout { border: 1px dashed #486773; border-radius: 10px; padding: 12px; margin-top: 16px; text-align: center; font-size: 13px; }
+#outcome { min-height: 70px; color: #78e7d5; font-size: 14px; }
+#events { padding-left: 20px; max-height: 170px; overflow: auto; overflow-wrap: anywhere; color: #bed0da; font: 12px/1.7 ui-monospace, monospace; }
+footer { margin-top: 24px; color: var(--muted); font-size: 12px; }
+a { color: #78e7d5; }
+footer button { margin: 12px 6px 0 0; }
+@media (max-width: 1000px) { .workspace { grid-template-columns: 1fr; } .scenarios { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 650px) { main { padding: 20px 14px; } .scenarios { grid-template-columns: 1fr 1fr; } .content, .bottom { grid-template-columns: 1fr; } .art { display: none; } .content { min-height: 170px; } .player { padding: 24px; } }
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand">LIVI<span>.</span></div><span class="badge">Interactive simulation · no hardware</span></header>
+<div class="eyebrow">Media experience / keyboard routing</div>
+<h1>The right action.<br>Even when nothing is playing.</h1>
+<p class="intro">Choose a scenario, then press <kbd>P</kbd> or use “Send P shortcut”.
+This is a simplified visual simulation, not the native application, a live connection, or proof of hardware behavior.</p>
+<div class="workspace">
+<aside class="scenarios" aria-label="Demo scenarios">
+<button data-scenario="disconnected"><strong>01 · No phone</strong><small>Empty state. Phone controls blocked.</small></button>
+<button data-scenario="connected"><strong>02 · Ready to play</strong><small>Connected, without track metadata.</small></button>
+<button data-scenario="playing"><strong>03 · Now playing</strong><small>Sample metadata and CarPlay seeking.</small></button>
+<button data-scenario="android"><strong>04 · Android Auto</strong><small>Playback controls, without seeking.</small></button>
+<button data-scenario="dab"><strong>05 · Stopped DAB</strong><small>Saved station, phone tab selected.</small></button>
+<button data-scenario="collision"><strong>06 · Shared binding</strong><small>Cluster layout wins over play/pause.</small></button>
+</aside>
+<section aria-label="Interactive media preview">
+<div class="screen">
+<div class="screen-top"><span>♫ &nbsp; Media</span><span id="connection"></span></div>
+<div class="tabs" id="tabs" hidden aria-label="Media source">
+<button id="phone-tab">Phone</button><button id="dab-tab">DAB+</button>
+</div>
+<div class="player">
+<div class="content">
+<div><h2 id="track"></h2><p id="artist"></p><p id="album"></p></div>
+<div class="art" id="art"><span class="note" aria-hidden="true">♫</span><span id="art-caption">No artwork</span></div>
+</div>
+<div class="controls" aria-label="Playback controls">
+<button id="prev" aria-label="Previous track">⏮</button>
+<button id="play" aria-label="Play or pause">▶</button>
+<button id="next" aria-label="Next track">⏭</button>
+</div>
+<div class="progress"><span id="elapsed">0:00</span><input id="seek" type="range" min="0" max="180" value="0" aria-label="Seek position in seconds"><span>3:00</span></div>
+<p id="seek-note"></p>
+</div>
+</div>
+<div class="facts" aria-label="Simulated state"><span id="phone-fact"></span><span id="metadata-fact"></span><span id="dab-fact"></span><span id="binding-fact"></span></div>
+<div class="bottom">
+<section class="panel">
+<h3 id="scenario-title"></h3><p id="explanation"></p>
+<div class="actions"><button id="send-key">Send P shortcut</button><button id="reset">Reset scenario</button></div>
+<div id="layout">Cluster layout 1 / 3</div>
+</section>
+<section class="panel"><h3>Routing result</h3><p id="outcome" role="status" aria-live="polite"></p><ol id="events" aria-label="Simulated event history"></ol></section>
+</div>
+</section>
+</div>
+<footer>
+No audio, network requests, or phone/DAB connections. Track, station, duration, and cluster details are illustrative.
+Source references: <a href="../native/crates/livi-ui/src/keys_ui.rs">UI routing</a> · <a href="../native/crates/livi-ui-model/src/keys.rs">Binding guard</a>.
+<br><button id="checks">Run demo checks</button><span id="check-result" role="status"></span>
+</footer>
+</main>
+<script id="demo-model">
+"use strict";
+(() => {
+  const base = { phone: null, metadata: false, playing: false, receiver: false, saved: false, active: false, view: "phone", collision: false, layout: 1, elapsed: 0 };
+  const scenarios = {
+    disconnected: { title: "No phone connected", explanation: "Phone buttons are disabled. A global media key has no eligible source and is blocked.", state: {} },
+    connected: { title: "Connected, no metadata", explanation: "The prompt changes, but playback controls remain available. This simulated CarPlay session has a sample duration, so seeking is enabled.", state: { phone: "CarPlay" } },
+    playing: { title: "Track metadata available", explanation: "Sample metadata replaces the prompt. Try play/pause and drag the seek bar. Playback time does not advance automatically.", state: { phone: "CarPlay", metadata: true, playing: true, elapsed: 42 } },
+    android: { title: "Android Auto", explanation: "Playback controls remain available, but the seek callback stays blocked.", state: { phone: "Android Auto", metadata: true, playing: true, elapsed: 42 } },
+    dab: { title: "Fix 1 · Resume stopped DAB", explanation: "No phone, saved station, DAB stopped, phone tab selected. Press P: DAB resumes while phone controls remain disabled.", state: { receiver: true, saved: true } },
+    collision: { title: "Fix 2 · Preserve binding precedence", explanation: "P is assigned to clusterLayout and playPause. Without a media source, the higher-priority cluster action still wins.", state: { collision: true } }
+  };
+  const initial = name => ({ ...base, ...scenarios[name].state });
+  function view(s) {
+    const radio = s.receiver && s.view === "dab";
+    return {
+      radio,
+      title: radio ? "Coast Radio" : !s.phone ? "No phone connected" : !s.metadata ? "Start playback on your phone" : "Night Drive",
+      controls: Boolean(s.phone) || radio,
+      seek: s.phone === "CarPlay",
+      metadata: !radio && Boolean(s.phone) && s.metadata
+    };
+  }
+  function transition(current, action, value) {
+    const s = { ...current };
+    const result = (message, kind = "allowed") => ({ state: s, message, kind });
+    if (action === "phone") {
+      s.view = "phone"; s.active = false; s.playing = false;
+      return result("Phone tab selected → DAB stop requested.");
+    }
+    if (action === "dab") {
+      if (!s.receiver) return result("No DAB receiver in this scenario.", "blocked");
+      s.view = "dab"; s.active = true; s.playing = true;
+      return result("DAB tab selected → DAB resume requested.");
+    }
+    if (action === "seek") {
+      if (!view(s).seek) return result("Seek blocked → requires connected CarPlay.", "blocked");
+      s.elapsed = Math.max(0, Math.min(180, Number(value) || 0));
+      return result(`CarPlay seek → ${s.elapsed} seconds.`);
+    }
+    if (action === "key" && s.collision) {
+      s.layout = s.layout % 3 + 1;
+      return result(`P → clusterLayout wins → layout ${s.layout}. No media action sent.`);
+    }
+    const eligible = action === "key"
+      ? Boolean(s.phone) || s.active || (!s.phone && s.saved)
+      : view(s).controls;
+    if (!eligible) return result(action === "key"
+      ? "P blocked → no phone or eligible DAB source."
+      : "Phone callback blocked → no connected phone.", "blocked");
+    const radioTarget = s.active || (!s.phone && s.saved) || view(s).radio;
+    if (radioTarget) {
+      if (!s.active) {
+        s.active = true; s.playing = true;
+        return result("Global media key → saved DAB source → resume DAB. Phone tab unchanged.");
+      }
+      if (action === "prev" || action === "next") return result(`DAB → ${action} station requested.`);
+      s.playing = !s.playing;
+      return result(`DAB → ${s.playing ? "resume" : "pause"}.`);
+    }
+    if (action === "prev" || action === "next") return result(`${s.phone} → ${action} track requested.`);
+    s.playing = !s.playing;
+    return result(`${s.phone} → play/pause requested (simulated feedback).`);
+  }
+  function selfTest() {
+    let count = 0;
+    const check = (ok, label) => { if (!ok) throw new Error(label); count++; };
+    const no = initial("disconnected");
+    check(view(no).title === "No phone connected", "Disconnected prompt");
+    check(!view(no).controls, "Disconnected controls");
+    check(transition(no, "key").kind === "blocked", "Unavailable global key");
+    check(transition(no, "play").kind === "blocked", "Stale callback");
+    const ready = initial("connected");
+    check(view(ready).title === "Start playback on your phone", "Connected prompt");
+    check(view(ready).controls && view(ready).seek, "CarPlay controls without metadata");
+    check(transition(ready, "play").state.playing, "Connected play");
+    check(transition(ready, "seek", 90).state.elapsed === 90, "CarPlay seek");
+    check(transition(ready, "seek", 999).state.elapsed === 180, "Clamped seek");
+    check(transition(initial("android"), "seek", 90).kind === "blocked", "Android seek blocked");
+    check(view(initial("playing")).metadata, "Track metadata");
+    const idle = initial("dab");
+    const resumed = transition(idle, "key");
+    check(resumed.state.active && resumed.state.playing, "Idle DAB resume");
+    check(resumed.state.view === "phone", "Phone tab retained");
+    check(!view(resumed.state).controls, "Phone buttons remain disabled");
+    check(transition(idle, "play").kind === "blocked", "Direct phone guard with saved stations");
+    check(transition({ ...idle, saved: false }, "key").kind === "blocked", "Empty station list");
+    check(!transition(resumed.state, "key").state.playing, "Active DAB pause");
+    check(transition(initial("collision"), "key").state.layout === 2, "Cluster collision");
+    check(!transition(initial("collision"), "key").state.playing, "No media action for collision");
+    check(transition(idle, "dab").state.view === "dab", "DAB tab");
+    check(!transition(transition(idle, "dab").state, "phone").state.active, "Phone tab stops DAB");
+    return count;
+  }
+  globalThis.MediaDemo = { scenarios, initial, view, transition, selfTest };
+})();
+</script>
+<script id="demo-ui">
+"use strict";
+(() => {
+  const { scenarios, initial, view, transition, selfTest } = globalThis.MediaDemo;
+  const $ = id => document.getElementById(id);
+  let selected = new URLSearchParams(location.search).get("scenario");
+  if (!Object.hasOwn(scenarios, selected)) selected = "dab";
+  let state = initial(selected);
+  let history = [];
+  const clock = n => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  function render() {
+    const v = view(state);
+    $("track").textContent = v.title;
+    $("artist").textContent = v.metadata ? "LIVI Demo Artist" : "";
+    $("album").textContent = v.metadata ? "After Hours · sample metadata" : "";
+    $("art").classList.toggle("loaded", v.metadata || v.radio);
+    $("art-caption").textContent = v.radio ? "DAB+ / SAMPLE STATION" : v.metadata ? "NIGHT DRIVE" : "No artwork";
+    $("connection").textContent = state.phone || "No phone session";
+    $("tabs").hidden = !state.receiver;
+    $("phone-tab").setAttribute("aria-pressed", String(!v.radio));
+    $("dab-tab").setAttribute("aria-pressed", String(v.radio));
+    for (const id of ["prev", "play", "next"]) $(id).disabled = !v.controls;
+    $("play").textContent = state.playing ? "Ⅱ" : "▶";
+    $("play").setAttribute("aria-label", state.playing ? "Pause" : "Play");
+    $("seek").disabled = !v.seek;
+    $("seek").value = state.elapsed;
+    $("elapsed").textContent = clock(state.elapsed);
+    $("seek-note").textContent = v.seek ? "CarPlay seeking enabled · sample duration 3:00" : "Seeking unavailable · CarPlay only";
+    $("phone-fact").textContent = `Phone: ${state.phone || "disconnected"}`;
+    $("metadata-fact").textContent = `Phone metadata: ${v.metadata ? "available" : "none"}`;
+    $("dab-fact").textContent = `DAB: ${state.active ? state.playing ? "playing" : "paused" : state.saved ? "stopped · saved station" : "unavailable"}`;
+    $("binding-fact").textContent = state.collision ? "P → clusterLayout + playPause" : "P → playPause";
+    $("scenario-title").textContent = scenarios[selected].title;
+    $("explanation").textContent = scenarios[selected].explanation;
+    $("layout").textContent = `Cluster layout ${state.layout} / 3`;
+    $("layout").style.borderColor = state.layout === 1 ? "#486773" : "#00adad";
+    document.querySelectorAll("[data-scenario]").forEach(button => {
+      button.setAttribute("aria-pressed", String(button.dataset.scenario === selected));
+    });
+  }
+  function log(message, blocked = false) {
+    $("outcome").textContent = message;
+    $("outcome").style.color = blocked ? "#efc581" : "#78e7d5";
+    history.unshift(message);
+    history = history.slice(0, 6);
+    $("events").replaceChildren(...history.map(text => {
+      const li = document.createElement("li");
+      li.textContent = text;
+      return li;
+    }));
+  }
+  function act(action, value) {
+    const result = transition(state, action, value);
+    state = result.state;
+    render();
+    log(result.message, result.kind === "blocked");
+  }
+  function reset(name) {
+    selected = name;
+    state = initial(name);
+    history = [];
+    render();
+    log("Scenario ready. Use the controls or send P.");
+  }
+  document.querySelectorAll("[data-scenario]").forEach(button => {
+    button.addEventListener("click", () => reset(button.dataset.scenario));
+  });
+  for (const id of ["prev", "play", "next"]) $(id).addEventListener("click", () => act(id));
+  $("phone-tab").addEventListener("click", () => act("phone"));
+  $("dab-tab").addEventListener("click", () => act("dab"));
+  $("send-key").addEventListener("click", () => act("key"));
+  $("seek").addEventListener("input", event => act("seek", event.target.value));
+  $("reset").addEventListener("click", () => reset(selected));
+  $("checks").addEventListener("click", () => {
+    try { $("check-result").textContent = `${selfTest()} demo checks passed (simulation only).`; }
+    catch (error) { $("check-result").textContent = `Demo check failed: ${error.message}`; }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.code === "KeyP" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      act("key");
+    }
+  });
+  reset(selected);
+})();
+</script>
+</body>
+</html>

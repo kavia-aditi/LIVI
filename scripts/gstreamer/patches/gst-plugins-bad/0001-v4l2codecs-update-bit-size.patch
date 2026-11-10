@@ -1,0 +1,45 @@
+Description: 
+v4l2codecs: Update bit_size and data_byte_offset based on
+ updated docs
+
+From discussion whilst upstreaming the Raspberry Pi HEVC decoder,
+the bit_size and data_byte_offset definitions have been clarified.
+They haven't been used by drivers until now.
+
+Update the usage to match the new documentation.
+ .
+ gst-plugins-bad1.0 (1.26.2-3) unstable; urgency=medium
+ .
+   * d/patches: 0001-h266parser-Fix-overflow-when-parsing-subpic_level_in.patch
+     - Fix CVE-2025-6663 (Closes: #1108973)
+       Fix overflow when parsing subpic_level_info in H.266 parser
+Author: Marc Leeman <marc.leeman@gmail.com>
+Bug-Debian: https://bugs.debian.org/1108973
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout https://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: (upstream|backport|vendor|other), (<patch-url>|commit:<commit-id>)
+Bug: <upstream-bugtracker-url>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: (no|not-needed|<patch-forwarded-url>)
+Applied-Upstream: <version>, (<commit-url>|commit:<commid-id>)
+Reviewed-By: <name and email of someone who approved/reviewed the patch>
+Last-Update: 2026-02-11
+
+--- a/sys/v4l2codecs/gstv4l2codech265dec.c
++++ b/sys/v4l2codecs/gstv4l2codech265dec.c
+@@ -735,8 +735,8 @@ gst_v4l2_codec_h265_dec_fill_slice_param
+   /* *INDENT-OFF* */
+   params = &g_array_index (self->slice_params, struct v4l2_ctrl_hevc_slice_params, n);
+   *params = (struct v4l2_ctrl_hevc_slice_params) {
+-    .bit_size = (slice_size + sc_offset) * 8,
+-    .data_byte_offset = get_slice_header_byte_offset (slice) + sc_offset,
++    .bit_size = (slice_size - get_slice_header_byte_offset(slice)) * 8,
++    .data_byte_offset = get_slice_header_byte_offset (slice) + sc_offset + self->bitstream_map.size,
+     .num_entry_point_offsets = slice_hdr->num_entry_point_offsets,
+     .nal_unit_type = slice->nalu.type,
+     .nuh_temporal_id_plus1 = slice->nalu.temporal_id_plus1,

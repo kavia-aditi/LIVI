@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ----------------------------------------
+# LIVI Headless Installer (any systemd + apt host)
+# ----------------------------------------
+# Kiosk-style install for a host with no desktop session. Works on Raspberry Pi
+# OS Lite and on x86 Debian alike. Everything it shares with the desktop
+# installer lives in scripts/install/common.sh.
+#
+#   - Installs seatd and PipeWire, LIVI drives the display itself
+#   - Writes the udev rule and the sudoers drop-in from the templates inside the
+#     AppImage, so first launch needs no pkexec dialog
+#   - Configures tty1 autologin through a systemd getty drop-in and starts LIVI on tty1
+#     from the livi-kiosk service
+#
+# Re-runnable. Refuses to run as root (sudo is used internally).
+
+LIVI_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../common.sh"
+if [ ! -f "$LIVI_LIB" ]; then
+  LIVI_LIB="$(mktemp)"
+  curl -fsSL \
+    "https://raw.githubusercontent.com/${LIVI_REPO:-f-io/LIVI}/${LIVI_INSTALLER_BRANCH:-main}/scripts/install/common.sh" \
+    -o "$LIVI_LIB" || { echo "Error: cannot obtain common.sh" >&2; exit 1; }
+fi
+# shellcheck source=../common.sh
+. "$LIVI_LIB"
+
+livi_require_regular_user
+livi_require_sudo
+
+if [ -z "$(livi_pm)" ]; then
+  echo "Error: this installer needs apt, dnf or pacman. Install the packages from" >&2
+  echo "scripts/install/packages.txt by hand, then run the remaining steps." >&2
+  exit 1
+fi
+
+USER_HOME="$HOME"
+APPIMAGE_PATH="$USER_HOME/LIVI/LIVI.AppImage"
+APPIMAGE_DIR="$(dirname "$APPIMAGE_PATH")"
+GETTY_DROPIN="/etc/systemd/system/getty@tty1.service.d/livi-autologin.conf"
+KIOSK_UNIT="/etc/systemd/system/livi-kiosk.service"
+KIOSK_PAM="/etc/pam.d/livi-kiosk"
+
+echo "→ Architecture: $(uname -m) → $(livi_asset_arch).AppImage"
+
+echo "→ Installing required packages"
+livi_pm_install $(livi_packages core lite | tr '\n' ' ')
+
+echo "→ Adding $USER to required groups"
+WANTED_GROUPS=(video render input plugdev)
+EXISTING_GROUPS=()
+for g in "${WANTED_GROUPS[@]}"; do
+  if getent group "$g" >/dev/null; then
+    EXISTING_GROUPS+=("$g")
+  else
+    echo "   skipping group '$g' (not present on this system)"
+  fi
+done
+if [ ${#EXISTING_GROUPS[@]} -gt 0 ]; then
+  sudo usermod -aG "$(IFS=,; echo "${EXISTING_GROUPS[*]}")" "$USER"
+fi
+
+# Optional positional arg: local AppImage file path or http(s) URL
+APPIMAGE_SRC="${1:-}"
+
+livi_pick_channel "$APPIMAGE_SRC"
+livi_ask_mfi
+livi_ask_splash
+livi_ask_hdmi_pr
+
+livi_fetch_appimage "$APPIMAGE_PATH" "$APPIMAGE_SRC"
+
+LIVI_EXTRACT_DIR="$(mktemp -d)"
+trap "rm -rf '$LIVI_EXTRACT_DIR'" EXIT
+
+echo "→ Extracting rule templates from the AppImage"
+UDEV_TEMPLATE="$(livi_fetch_template "$APPIMAGE_PATH" "$LIVI_UDEV_TEMPLATE")" || {
+  echo "Error: cannot obtain $LIVI_UDEV_TEMPLATE" >&2
+  exit 1
+}
+SUDOERS_TEMPLATE="$(livi_fetch_template "$APPIMAGE_PATH" "$LIVI_SUDOERS_TEMPLATE")" || {
+  echo "Error: cannot obtain $LIVI_SUDOERS_TEMPLATE" >&2
+  exit 1
+}
+KIOSK_TEMPLATE="$(livi_fetch_template "$APPIMAGE_PATH" "$LIVI_KIOSK_TEMPLATE")" || {
+  echo "Error: cannot obtain $LIVI_KIOSK_TEMPLATE" >&2
+  exit 1
+}
+TOUCH_FILTER="$(livi_fetch_template "$APPIMAGE_PATH" "$LIVI_TOUCH_FILTER_TEMPLATE")" || {
+  echo "Error: cannot obtain $LIVI_TOUCH_FILTER_TEMPLATE" >&2
+  exit 1
+}
+
+# --- shared ---
+livi_write_udev_rule "$UDEV_TEMPLATE"
+livi_write_sudoers "$SUDOERS_TEMPLATE"
+livi_optional livi_install_touch_filter "$TOUCH_FILTER"
+livi_optional livi_write_regdom
+livi_optional livi_install_time_helper
+livi_optional livi_disable_wifi_powersave
+livi_optional livi_set_wifi_pmf_optional
+livi_optional livi_grant_rtprio
+livi_optional livi_apply_mfi
+livi_optional livi_apply_splash
+livi_optional livi_apply_hdmi_pr "$APPIMAGE_PATH"
+
+# --- headless only ---
+livi_optional livi_install_video_mode_helper
+livi_optional livi_install_power_helper
+
+echo "→ Enabling seatd"
+sudo systemctl enable --now seatd
+
+echo "→ Disabling NetworkManager-wait-online"
+sudo systemctl disable NetworkManager-wait-online.service >/dev/null 2>&1 || true
+
+echo "→ Preloading iPhone USB net drivers (so cdc_ncm binds the AV interface at cold boot)"
+sudo tee /etc/modules-load.d/livi.conf >/dev/null <<'EOF'
+cdc_ncm
+cdc_ether
+ipheth
+EOF
+
+echo "→ Enabling lingering for PipeWire user services"
+sudo loginctl enable-linger "$USER"
+
+echo "→ Configuring tty1 autologin"
+AGETTY_BIN="$(command -v agetty || echo /sbin/agetty)"
+sudo mkdir -p "$(dirname "$GETTY_DROPIN")"
+sudo tee "$GETTY_DROPIN" >/dev/null <<EOF
+[Service]
+ExecStart=
+ExecStart=-$AGETTY_BIN --autologin $USER --noclear %I \$TERM
+EOF
+sudo systemctl daemon-reload
+
+PREVIOUS_TARGET="$(systemctl get-default)"
+if [ "$PREVIOUS_TARGET" != "multi-user.target" ]; then
+  echo "   boot target $PREVIOUS_TARGET → multi-user.target (kiosk owns the screen)"
+  sudo systemctl set-default multi-user.target
+fi
+
+KIOSK_MARKER="# LIVI-KIOSK-AUTOSTART"
+if grep -q "$KIOSK_MARKER" "$USER_HOME/.bash_profile" 2>/dev/null; then
+  echo "→ Removing the old kiosk autostart from ~/.bash_profile"
+  cp -p "$USER_HOME/.bash_profile" "$USER_HOME/.bash_profile.livi-bak"
+  awk -v marker="$KIOSK_MARKER" '
+    $0 == marker { skip = 1; next }
+    skip && /^fi$/ { skip = 0; next }
+    !skip { print }
+  ' "$USER_HOME/.bash_profile.livi-bak" > "$USER_HOME/.bash_profile"
+fi
+
+livi_write_kiosk_pam "$KIOSK_PAM"
+
+echo "→ Writing $KIOSK_UNIT"
+SYSTEMCTL_BIN="$(command -v systemctl || echo /usr/bin/systemctl)"
+sed -e "s|__USERNAME__|$USER|g" \
+    -e "s|__HOME__|$USER_HOME|g" \
+    -e "s|__APPIMAGE__|$APPIMAGE_PATH|g" \
+    -e "s|__SYSTEMCTL__|$SYSTEMCTL_BIN|g" \
+    "$KIOSK_TEMPLATE" | sudo tee "$KIOSK_UNIT" >/dev/null
+
+sudo systemctl daemon-reload
+sudo systemctl enable livi-kiosk.service
+
+echo ""
+echo "✅ LIVI headless installation complete."
+livi_report_skipped
+echo ""
+echo "Reboot to launch LIVI in kiosk mode on tty1:"
+echo "    sudo reboot"
+echo ""
+echo "To exit kiosk for debugging, switch to a different VT (Ctrl+Alt+F2)."
+echo "Shutting LIVI down from its own menu ends the service and leaves you on tty1."
+echo "To disable kiosk autostart, run 'sudo systemctl disable livi-kiosk.service'."
+echo "To disable autologin, remove $GETTY_DROPIN and run 'sudo systemctl daemon-reload'."
+echo "To get a graphical login back, run 'sudo systemctl set-default graphical.target'."

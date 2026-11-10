@@ -1,0 +1,12 @@
+{
+  "ssid": "REPLACE_WITH_ACTUAL_5_GHZ_SSID",
+  "password": "REPLACE_WITH_ACTUAL_WPA2_PASSWORD",
+  "security": "wpa2",
+  "bssid": "REPLACE_WITH_ACTUAL_AP_BSSID",
+  "channel": 0,
+  "mac_ipv4": "REPLACE_WITH_MAC_LAN_IPV4",
+  "port": 5277,
+  "phone_address": "REPLACE_WITH_CONFIRMED_ONEPLUS_CLASSIC_ADDRESS",
+  "phone_not_projecting_usb": false,
+  "wired_ids": []
+}

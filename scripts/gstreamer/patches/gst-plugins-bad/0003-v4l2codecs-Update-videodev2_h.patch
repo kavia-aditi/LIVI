@@ -1,0 +1,42 @@
+Description: 
+v4l2codecs: Update videodev2.h with NV12MT_COL128 and
+ NV12MT_10_COL128
+
+These formats are being upstreamed at present for the Raspberry Pi
+HEVC decoder. Add them so that we can get Fluster running and validate
+the driver.
+ .
+ gst-plugins-bad1.0 (1.26.2-3) unstable; urgency=medium
+ .
+   * d/patches: 0001-h266parser-Fix-overflow-when-parsing-subpic_level_in.patch
+     - Fix CVE-2025-6663 (Closes: #1108973)
+       Fix overflow when parsing subpic_level_info in H.266 parser
+Author: Marc Leeman <marc.leeman@gmail.com>
+Bug-Debian: https://bugs.debian.org/1108973
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout https://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: (upstream|backport|vendor|other), (<patch-url>|commit:<commit-id>)
+Bug: <upstream-bugtracker-url>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: (no|not-needed|<patch-forwarded-url>)
+Applied-Upstream: <version>, (<commit-url>|commit:<commid-id>)
+Reviewed-By: <name and email of someone who approved/reviewed the patch>
+Last-Update: 2026-02-11
+
+--- a/sys/v4l2codecs/linux/videodev2.h
++++ b/sys/v4l2codecs/linux/videodev2.h
+@@ -649,6 +649,9 @@ struct v4l2_pix_format {
+ #define V4L2_PIX_FMT_P010_4L4 v4l2_fourcc('T', '0', '1', '0') /* 12  Y/CbCr 4:2:0 10-bit 4x4 macroblocks */
+ #define V4L2_PIX_FMT_NV12_8L128       v4l2_fourcc('A', 'T', '1', '2') /* Y/CbCr 4:2:0 8x128 tiles */
+ #define V4L2_PIX_FMT_NV12_10BE_8L128  v4l2_fourcc_be('A', 'X', '1', '2') /* Y/CbCr 4:2:0 10-bit 8x128 tiles */
++#define V4L2_PIX_FMT_NV12MT_COL128 v4l2_fourcc('N', 'c', '1', '2') /* 12  Y/CbCr 4:2:0 128 pixel wide column */
++#define V4L2_PIX_FMT_NV12MT_10_COL128 v4l2_fourcc('N', 'c', '3', '0')
++			/* Y/CbCr 4:2:0 10bpc, 3x10 packed as 4 bytes in a 128 bytes / 96 pixel wide column */
+ 
+ /* Tiled YUV formats, non contiguous planes */
+ #define V4L2_PIX_FMT_NV12MT  v4l2_fourcc('T', 'M', '1', '2') /* 12  Y/CbCr 4:2:0 64x32 tiles */

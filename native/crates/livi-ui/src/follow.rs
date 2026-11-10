@@ -1,0 +1,231 @@
+// SPDX-FileCopyrightText: 2025-2026 Lasse Heitgres
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Additional terms: see NOTICE
+
+use std::collections::BTreeSet;
+
+use livi_core_proto::state::Front;
+use livi_ui_model::shell::{Look, look};
+use serde_json::Value;
+
+use crate::PhoneState;
+use crate::dashboard_ui::{DashReader, DashView};
+use crate::media::{DabView, MediaReader, MediaView};
+use livi_ui_model::dashboard::screens::secondary;
+use livi_ui_model::mask::{Mask, Stream, mask};
+use livi_ui_model::overlay;
+
+pub enum Update {
+    Media(MediaView),
+    Dab(DabView),
+    Dash(Box<DashView>),
+    DashOn(livi_core_proto::state::Screen, Box<DashView>),
+    Secondary(Vec<livi_ui_model::dashboard::screens::Secondary>),
+    Front(Front),
+    Phone(PhoneState),
+    NativeSurface(bool),
+    Look(Look),
+    Kiosk(bool),
+    Settings,
+    Spectrum(Vec<f32>),
+    Status(String),
+    Open(String),
+    Volume(f64),
+    PhoneName(String),
+    Camera(bool),
+    MainMask(Option<Mask>),
+}
+
+#[derive(Default)]
+pub struct Follow {
+    media: MediaReader,
+    front: Option<Front>,
+    phone: Option<PhoneState>,
+    look: Option<Look>,
+    kiosk: Option<bool>,
+    dash: DashReader,
+    others: Vec<(livi_core_proto::state::Screen, DashReader)>,
+    secondary: Option<Vec<livi_ui_model::dashboard::screens::Secondary>>,
+    volume: overlay::Volume,
+    phones: overlay::Phone,
+    started: bool,
+    main_mask: Option<Option<Mask>>,
+}
+
+impl Follow {
+    pub fn changed(&mut self, keys: Option<&BTreeSet<String>>, state: &Value) -> Vec<Update> {
+        let all = keys.is_none_or(|k| k.contains(""));
+        let hit = |key: &str| all || keys.is_some_and(|k| k.contains(key));
+        let mut out = Vec::new();
+        if hit("nowPlaying") || hit("sessions") {
+            out.push(Update::Media(self.media.read(state)));
+        }
+        if hit("dab")
+            && let Some(d) = self.media.read_dab(state)
+        {
+            out.push(Update::Dab(d));
+        }
+        if hit("sessions") || hit("system") || hit("front") {
+            use livi_core_proto::native_wireless_aa::NativeProjectionProgress as P;
+            let native = &state["system"]["nativeProjection"];
+            let native_present = !native.is_null()
+                && state["sessions"]["active"].as_str() == Some("androidauto");
+            let visible = native_present && state["front"]["main"].as_str() == Some("projection");
+            let presented = serde_json::from_value::<P>(native.clone())
+                .is_ok_and(|progress| matches!(progress, P::Presented { .. })) && visible;
+            out.push(Update::NativeSurface(visible));
+            let phone = if state["sessions"]["active"].is_null() {
+                PhoneState::None
+            } else if native_present && !presented {
+                PhoneState::Connected
+            } else {
+                PhoneState::Streaming
+            };
+            if self.phone != Some(phone) {
+                self.phone = Some(phone);
+                out.push(Update::Phone(phone));
+            }
+        }
+        if hit("front") {
+            let front: Option<Front> = serde_json::from_value(state["front"]["main"].clone()).ok();
+            if let Some(front) = front
+                && self.front != Some(front)
+            {
+                self.front = Some(front);
+                out.push(Update::Front(front));
+            }
+        }
+        if hit("config") {
+            let next = look(&state["config"]);
+            if self.look.as_ref() != Some(&next) {
+                self.look = Some(next.clone());
+                out.push(Update::Look(next));
+            }
+            let kiosk = state["config"]["kiosk"]["main"].as_bool().unwrap_or(false);
+            if self.kiosk != Some(kiosk) {
+                self.kiosk = Some(kiosk);
+                out.push(Update::Kiosk(kiosk));
+            }
+        }
+        if hit("sessions") || hit("config") {
+            let next = mask(state, Stream::Main);
+            if self.main_mask != Some(next) {
+                self.main_mask = Some(next);
+                out.push(Update::MainMask(next));
+            }
+        }
+        if hit("telemetry")
+            || hit("config")
+            || hit("cluster")
+            || hit("navigation")
+            || hit("sessions")
+        {
+            let dark = self.look.as_ref().is_none_or(|l| l.dark);
+            out.push(Update::Dash(Box::new(self.dash.read(
+                state,
+                livi_core_proto::state::Screen::Main,
+                dark,
+            ))));
+            let wanted = secondary(state);
+            if self.secondary.as_ref() != Some(&wanted) {
+                self.secondary = Some(wanted.clone());
+                out.push(Update::Secondary(wanted.clone()));
+            }
+            self.others
+                .retain(|(screen, _)| wanted.iter().any(|w| w.screen == *screen));
+            for w in wanted.iter().filter(|w| w.dashboard) {
+                let reader = match self.others.iter_mut().position(|(s, _)| *s == w.screen) {
+                    Some(i) => &mut self.others[i].1,
+                    None => {
+                        self.others.push((w.screen, DashReader::default()));
+                        &mut self.others.last_mut().expect("just pushed").1
+                    }
+                };
+                out.push(Update::DashOn(
+                    w.screen,
+                    Box::new(reader.read(state, w.screen, dark)),
+                ));
+            }
+        }
+        if hit("cameras") {
+            let found = state["cameras"].as_array().is_some_and(|c| !c.is_empty());
+            out.push(Update::Camera(found));
+        }
+        if livi_ui_model::settings::STATE_READ
+            .iter()
+            .any(|key| hit(key))
+        {
+            out.push(Update::Settings);
+        }
+        if hit("config")
+            && let Some(level) = self.volume.update(state)
+        {
+            out.push(Update::Volume(level));
+        }
+        if (hit("config") || hit("devices"))
+            && let Some(name) = self.phones.update(state)
+        {
+            out.push(Update::PhoneName(name));
+        }
+        if keys.is_none()
+            && !std::mem::replace(&mut self.started, true)
+            && std::env::var_os("LIVI_UI_PAGE").is_none()
+        {
+            let start = state["system"]["startPage"].as_str().unwrap_or("/");
+            out.push(Update::Open(start.to_string()));
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn native_transport_and_decode_do_not_mean_streaming() {
+        for progress in [
+            json!({"phase":"milestone","owner":{"runtimeId":1,"attemptId":2,"generation":3,
+                "sessionId":4},"milestone":"tls"}),
+            json!({"phase":"invalidated"}),
+            json!({"phase":"presented","presentedTime":0}),
+        ] {
+            let state = json!({"sessions":{"active":"androidauto"},"front":{"main":"projection"},
+                "system":{"nativeProjection":progress}});
+            let updates = Follow::default().changed(None, &state);
+            assert!(updates.iter().any(|u| matches!(u, Update::Phone(PhoneState::Connected))));
+            assert!(updates.iter().any(|u| matches!(u, Update::NativeSurface(true))));
+        }
+    }
+
+    #[test]
+    fn exact_presentation_snapshot_enables_streaming_and_legacy_stays_unchanged() {
+        let progress = json!({"phase":"presented","owner":{"runtimeId":1,"attemptId":2,
+            "generation":3,"sessionId":4,"connectionId":5,"playerId":6},
+            "frameId":7,"visibilityEpoch":8,"presentedTime":9.0});
+        for native in [progress, Value::Null] {
+            let state = json!({"sessions":{"active":"androidauto"},"front":{"main":"projection"},
+                "system":{"nativeProjection":native}});
+            let updates = Follow::default().changed(None, &state);
+            assert!(updates.iter().any(|u| matches!(u, Update::Phone(PhoneState::Streaming))));
+        }
+    }
+
+    #[test]
+    fn hidden_native_receipt_never_streams_and_carplay_never_uses_native_surface() {
+        let progress = json!({"phase":"presented","owner":{"runtimeId":1,"attemptId":2,
+            "generation":3,"sessionId":4,"connectionId":5,"playerId":6},
+            "frameId":7,"visibilityEpoch":8,"presentedTime":9.0});
+        for (protocol, front, phone) in [
+            ("androidauto", "livi", PhoneState::Connected),
+            ("carplay", "projection", PhoneState::Streaming),
+        ] {
+            let state = json!({"sessions":{"active":protocol},"front":{"main":front},
+                "system":{"nativeProjection":progress}});
+            let updates = Follow::default().changed(None, &state);
+            assert!(updates.iter().any(|u| matches!(u, Update::NativeSurface(false))));
+            assert!(updates.iter().any(|u| matches!(u, Update::Phone(p) if *p == phone)));
+        }
+    }
+}

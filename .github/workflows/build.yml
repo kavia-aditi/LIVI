@@ -1,0 +1,343 @@
+name: build
+run-name: "build → ${{ github.event.workflow_run.head_branch || github.ref_name }}"
+
+on:
+  workflow_run:
+    workflows: ["checks"]
+    branches: [main]
+    types: [completed]
+
+  workflow_dispatch:
+    inputs:
+      linux_x64:
+        description: "Build Linux x64"
+        type: boolean
+        default: true
+      linux_arm64:
+        description: "Build Linux arm64"
+        type: boolean
+        default: true
+      macos_arm64:
+        description: "Build macOS arm64 (dmg)"
+        type: boolean
+        default: true
+      macos_x64:
+        description: "Build macOS x64 (dmg)"
+        type: boolean
+        default: true
+      publish_nightly:
+        description: "Publish nightly release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  CARGO_INCREMENTAL: 0
+  APPIMAGETOOL_VERSION: "1.9.0"
+
+jobs:
+  plan:
+    name: Plan build matrix
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      is_empty: ${{ steps.plan.outputs.is_empty }}
+    steps:
+      - id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IN_LINUX_X64: ${{ inputs.linux_x64 }}
+          IN_LINUX_ARM64: ${{ inputs.linux_arm64 }}
+          IN_MACOS_ARM64: ${{ inputs.macos_arm64 }}
+          IN_MACOS_X64: ${{ inputs.macos_x64 }}
+        run: |
+          set -euo pipefail
+
+          entries=()
+          add() {
+            entries+=("{\"os\":\"$1\",\"runner\":\"$2\",\"arch\":\"$3\",\"artifact_ext\":\"$4\"}")
+          }
+          want() {
+            [[ "$EVENT_NAME" == workflow_run || "${1,,}" == true ]]
+          }
+          if want "$IN_LINUX_X64"; then add linux ubuntu-24.04 x64 AppImage; fi
+          if want "$IN_LINUX_ARM64"; then add linux ubuntu-24.04-arm arm64 AppImage; fi
+          if want "$IN_MACOS_ARM64"; then add macos macos-latest arm64 dmg; fi
+          if want "$IN_MACOS_X64"; then add macos macos-latest x64 dmg; fi
+
+          matrix="{\"include\":[$(IFS=,; echo "${entries[*]-}")]}"
+          is_empty=$([[ ${#entries[@]} -eq 0 ]] && echo true || echo false)
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "is_empty=$is_empty" >> "$GITHUB_OUTPUT"
+          echo "Planned matrix: $matrix"
+          echo "Empty: $is_empty"
+
+  build:
+    name: Build ${{ matrix.artifact_ext }} (${{ matrix.os }}-${{ matrix.arch }}) on ${{ github.event.workflow_run.head_branch || github.ref_name }}
+    needs: plan
+    if: ${{ needs.plan.outputs.is_empty != 'true' }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      BUILD_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+      BUILD_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_sha }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/assets/gstreamer/*/
+            /assets/gstreamer/*/version.txt
+            /assets/gstreamer/${{ matrix.os == 'macos' && 'macos-arm64' || format('linux-{0}', matrix.arch) }}/
+
+      - name: Read version from native/Cargo.toml
+        id: pkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' native/Cargo.toml)
+          [[ -n "$VERSION" ]] || { echo "::error::No version in native/Cargo.toml"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux deps [linux]
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Not used here, and its index and packages drift apart often enough to break a run.
+          sudo rm -f /etc/apt/sources.list.d/*google*
+          sudo sed -i '\#dl\.google\.com#d' /etc/apt/sources.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              build-essential pkg-config libudev1 ca-certificates libssl-dev \
+              libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+              cmake libwayland-dev libxkbcommon-dev libfontconfig1-dev \
+              libudev-dev libinput-dev libseat-dev libgbm-dev file desktop-file-utils
+          sudo rm -rf /var/lib/apt/lists/*
+
+      - name: Install appimagetool [linux]
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case '${{ matrix.arch }}' in
+            x64) tool_arch=x86_64 ;;
+            arm64) tool_arch=aarch64 ;;
+          esac
+          url="https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-${tool_arch}.AppImage"
+          curl -fL -o "$RUNNER_TEMP/appimagetool" "$url"
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> "$GITHUB_ENV"
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+
+      - name: Install deps (brew) [macos]
+        if: matrix.os == 'macos'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          set -euo pipefail
+          brew list --versions pkg-config >/dev/null || brew install pkg-config >/dev/null
+
+      - name: GStreamer version [macos]
+        id: gstver_mac
+        if: matrix.os == 'macos'
+        shell: bash
+        run: echo "version=$(tr -d '[:space:]' < assets/gstreamer/macos-arm64/version.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache GStreamer pkgs [macos]
+        id: gstcache_mac
+        if: matrix.os == 'macos'
+        uses: actions/cache@v6
+        with:
+          path: |
+            gst-runtime.pkg
+            gst-devel.pkg
+          key: gst-pkg-macos-universal-${{ steps.gstver_mac.outputs.version }}
+
+      - name: Download GStreamer pkgs [macos]
+        if: matrix.os == 'macos' && steps.gstcache_mac.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          v='${{ steps.gstver_mac.outputs.version }}'
+          base="https://gstreamer.freedesktop.org/data/pkg/osx/$v"
+          curl -fL -o gst-runtime.pkg "$base/gstreamer-1.0-$v-universal.pkg"
+          curl -fL -o gst-devel.pkg "$base/gstreamer-1.0-devel-$v-universal.pkg"
+
+      - name: Install GStreamer (runtime + devel) [macos]
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo installer -pkg gst-runtime.pkg -target /
+          sudo installer -pkg gst-devel.pkg -target /
+
+      - name: Setup Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install
+          rustc --version
+
+      - name: Restore cargo cache
+        id: cargo
+        uses: ./.github/actions/cargo-cache/restore
+        with:
+          name: build-${{ matrix.os }}-${{ matrix.arch }}
+
+      - name: Build and package [linux]
+        if: matrix.os == 'linux'
+        working-directory: native
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ../dist
+          cargo xtask package-linux --arch '${{ matrix.arch }}'
+
+      - name: Build and package (arm64 native, x64 cross-compiled) [macos]
+        if: matrix.os == 'macos'
+        working-directory: native
+        shell: bash
+        env:
+          PKG_CONFIG_PATH: /Library/Frameworks/GStreamer.framework/Versions/1.0/lib/pkgconfig
+        run: |
+          set -euo pipefail
+          rm -rf ../dist
+          cargo xtask package-mac --arch '${{ matrix.arch }}'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ format('LIVI-{0}-{1}-{2}.{3}', steps.pkg.outputs.version, matrix.os, matrix.arch, matrix.artifact_ext) }}
+          path: dist/*.${{ matrix.artifact_ext }}
+          retention-days: 7
+
+      - name: Save cargo cache
+        if: ${{ steps.cargo.outputs.hit != 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') }}
+        uses: ./.github/actions/cargo-cache/save
+        with:
+          key: ${{ steps.cargo.outputs.key }}
+
+      - name: Push badges to version branch
+        if: matrix.os == 'linux' && matrix.arch == 'x64' && (env.BUILD_BRANCH == 'main' || env.BUILD_BRANCH == 'dev')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          set -euo pipefail
+          GSTREAMER="$(tr -d '[:space:]' < assets/gstreamer/linux-x64/version.txt 2>/dev/null || true)"
+          RUST="$(rustc --version | cut -d' ' -f2)"
+          SLINT="$(sed -n '/^name = "slint"$/{n;s/^version = "\(.*\)"/\1/p;}' native/Cargo.lock)"
+          badge() {
+            echo "{\"schemaVersion\":1,\"label\":\"$2\",\"message\":\"$3\",\"color\":\"$4\"}" > ".github/badges/${BUILD_BRANCH}-$1.json"
+          }
+
+          rm -rf "$RUNNER_TEMP/badges"
+          git clone --depth=1 --branch version "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}" "$RUNNER_TEMP/badges"
+          cd "$RUNNER_TEMP/badges"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          mkdir -p .github/badges
+          badge version "$BUILD_BRANCH" "v${VERSION}" lightblue
+          badge rust rust "$RUST" orange
+          badge slint slint "$SLINT" blue
+          if [[ -n "$GSTREAMER" ]]; then
+            badge gstreamer gstreamer "$GSTREAMER" blue
+          fi
+          git add ".github/badges/${BUILD_BRANCH}-"*.json
+          git commit -m "chore(badges): ${BUILD_BRANCH} -> v${VERSION}, rust ${RUST}, slint ${SLINT}, gstreamer ${GSTREAMER:-n/a}" || echo "No changes"
+          git push
+
+  nightly:
+    name: Publish rolling nightly
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_nightly }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            assets/livi-link
+            scripts/livi-link
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: nightly-assets
+
+      - name: Pick livi-link assets run ID
+        id: tool
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN=$(gh run list --repo "$REPO" \
+                             --workflow livi-link.yml \
+                             -s success \
+                             -L 1 \
+                             --json databaseId \
+                             -q '.[0].databaseId')
+          echo "run_id=$RUN" >> "$GITHUB_OUTPUT"
+
+      - name: Download the LIVI Link tool
+        if: steps.tool.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ steps.tool.outputs.run_id }}
+          pattern: livi-link-provision-*
+          path: nightly-assets
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add the LIVI Link firmware
+        run: bash scripts/livi-link/stage-firmware.sh nightly-assets/livi-link
+
+      - name: Replace the nightly prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+          RUN: ${{ github.run_number }}
+        run: |
+          BUILT_AT="$(TZ=Europe/Berlin date +'%Y-%m-%d %H:%M %Z')"
+
+          args=(
+            nightly
+            --repo "$REPO"
+            --target "$SHA"
+            --prerelease
+            --title "Nightly #${RUN} · ${BRANCH} (${SHA:0:7})"
+            --notes "Rolling build of \`${BRANCH}\`.
+
+          Run: #${RUN}
+          Commit: \`${SHA}\`
+          Built: ${BUILT_AT}"
+          )
+
+          while IFS= read -r -d '' file; do
+            args+=("$file")
+          done < <(find nightly-assets -type f -print0)
+
+          gh release delete nightly --repo "$REPO" --yes --cleanup-tag || true
+          gh release create "${args[@]}"

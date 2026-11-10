@@ -1,0 +1,133 @@
+// SPDX-FileCopyrightText: 2025-2026 Lasse Heitgres
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Additional terms: see NOTICE
+
+import { Button } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component BluetoothDemoWindow inherits Window {
+    title: "LIVI — Bluetooth simulation";
+    preferred-width: 1000px;
+    preferred-height: 660px;
+    min-width: 700px;
+    min-height: 580px;
+    default-font-family: "Roboto";
+    background: Theme.background;
+
+    in property <bool> opened;
+    in property <bool> service-available: true;
+    in property <bool> connected;
+    in property <string> state-label;
+    in property <string> advance-label;
+    in property <string> notice;
+    // IDs are mapped to presentation-only actions in bluetooth_demo.rs.
+    callback action(int);
+
+    VerticalLayout {
+        padding: 28px;
+        spacing: 18px;
+        Text {
+            text: "LIVI / Native UI demonstration";
+            color: Theme.text-secondary;
+            font-size: 18px;
+        }
+        Text {
+            text: root.opened ? "Bluetooth connectivity" : "Connectivity demonstration";
+            color: Theme.text;
+            font-size: 32px;
+            font-weight: 700;
+        }
+        Rectangle {
+            height: 62px;
+            background: Theme.surface;
+            border-color: Theme.primary;
+            border-width: 1px;
+            border-radius: 8px;
+            Text {
+                text: root.notice;
+                color: Theme.text;
+                font-size: 21px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        if !root.opened: VerticalLayout {
+            spacing: 16px;
+            Text {
+                text: "Explore Bluetooth UI states without starting the core or helper.";
+                color: Theme.text-secondary;
+                font-size: 20px;
+                wrap: word-wrap;
+            }
+            Button {
+                text: "Open Bluetooth connectivity";
+                clicked => { root.action(0); }
+            }
+        }
+        if root.opened: VerticalLayout {
+            spacing: 14px;
+            Text {
+                text: root.state-label;
+                color: root.connected ? Theme.primary : Theme.text;
+                font-size: 38px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.service-available
+                    ? "Demo service: available (simulated)"
+                    : "Demo service: unavailable — connection actions disabled";
+                color: root.service-available ? Theme.text-secondary : #ffb86c;
+                font-size: 19px;
+                wrap: word-wrap;
+            }
+            Text {
+                text: "Connected means a simulated UI state only. No radio, pairing or profile is tested.";
+                color: Theme.text-secondary;
+                font-size: 18px;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Button {
+                    text: root.advance-label;
+                    enabled: root.service-available && !root.connected;
+                    clicked => { root.action(2); }
+                }
+                Button {
+                    text: "Simulate disconnect";
+                    enabled: root.state-label != "Disconnected";
+                    clicked => { root.action(3); }
+                }
+                Button {
+                    text: "Simulate connection loss";
+                    enabled: root.connected;
+                    clicked => { root.action(4); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Button {
+                    text: "Simulate service loss";
+                    enabled: root.service-available;
+                    clicked => { root.action(5); }
+                }
+                Button {
+                    text: "Recover demo service";
+                    enabled: !root.service-available;
+                    clicked => { root.action(6); }
+                }
+                Button {
+                    text: "Back / cancel attempt";
+                    clicked => { root.action(1); }
+                }
+            }
+        }
+        Rectangle { vertical-stretch: 1; background: transparent; }
+        Text {
+            text: "UI-only simulation • USB/AOA, HFP and privileged APIs are not used";
+            color: Theme.text-secondary;
+            font-size: 16px;
+            wrap: word-wrap;
+        }
+    }
+}

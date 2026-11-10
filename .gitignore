@@ -1,0 +1,77 @@
+# Builds & bundles
+dist/
+build/
+out/
+release/
+tmp/
+temp/
+
+# Cargo
+native/**/target/
+
+# Test/coverage
+coverage/
+
+# Caches
+.cache/
+
+# Packaging artifacts
+*.AppImage
+*.dmg
+*.dmg.blockmap
+*.snap
+*.deb
+*.rpm
+*.exe
+*.msi
+*.nupkg
+*.zip
+*.7z
+*.tar.gz
+*.tar.xz
+*.blockmap
+latest*.yml
+app-update.yml
+
+# Android/archives
+*.apk
+*.tgz
+
+# IDE
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.log*
+
+# LIVI Link dongle stack — build output, committed by the CI job only
+assets/livi-link/*/*.gz
+assets/livi-link/*/*.lfwb
+assets/livi-link/*/MANIFEST.md5
+native/crates/livi-link-provision/assets/bindshell/*
+# Local workspace and temporary files
+temp-attachments/
+.workspace-backups/
+workspace-backups/
+**/__pycache__/
+
+# Private configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local KAVIA state
+.kavia/

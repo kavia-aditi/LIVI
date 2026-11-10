@@ -1,0 +1,44 @@
+Description: 
+v4l2codecs: Match V4L2_PIX_FMT_NC12 handling with V4L2
+ format
+
+Commit b275f63b1318 ("v4l2codecs: format: Add V4L2_PIX_FMT_NC12")
+added the handling based on DRM format and modifier.
+We're about to add the replacement V4L2_PIX_FMT_NV12MT_COL128 as a
+full GStreamer format, match on V4L2 pixel format to avoid forcing
+the new format to have the same constraints.
+
+ gst-plugins-bad1.0 (1.26.2-3) unstable; urgency=medium
+ .
+   * d/patches: 0001-h266parser-Fix-overflow-when-parsing-subpic_level_in.patch
+     - Fix CVE-2025-6663 (Closes: #1108973)
+       Fix overflow when parsing subpic_level_info in H.266 parser
+Author: Marc Leeman <marc.leeman@gmail.com>
+Bug-Debian: https://bugs.debian.org/1108973
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout https://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: (upstream|backport|vendor|other), (<patch-url>|commit:<commit-id>)
+Bug: <upstream-bugtracker-url>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: (no|not-needed|<patch-forwarded-url>)
+Applied-Upstream: <version>, (<commit-url>|commit:<commid-id>)
+Reviewed-By: <name and email of someone who approved/reviewed the patch>
+Last-Update: 2026-02-11
+
+--- a/sys/v4l2codecs/gstv4l2format.c
++++ b/sys/v4l2codecs/gstv4l2format.c
+@@ -205,8 +205,7 @@ gst_v4l2_format_to_dma_drm_info (struct
+     n_planes = 1;
+   }
+ 
+-  if (drm_fourcc == DRM_FORMAT_NV12
+-      && drm_mod == DRM_FORMAT_MOD_BROADCOM_SAND128) {
++  if (pix_mp->pixelformat == V4L2_PIX_FMT_NC12) {
+     out_drm_info->vinfo.offset[1] = pix_mp->height * 128;
+     out_drm_info->vinfo.stride[0] = pix_mp->plane_fmt[0].bytesperline;
+     out_drm_info->vinfo.stride[1] = pix_mp->plane_fmt[0].bytesperline;

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.f-io.livi.bluetooth-diagnostic</string>
+    <key>CFBundleName</key>
+    <string>LIVI Bluetooth-only Diagnostic</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Test one already-paired phone's RFCOMM and Android Auto version response only. No Wi-Fi setup or projection.</string>
+</dict>
+</plist>

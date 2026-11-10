@@ -1,0 +1,156 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "ID of successful build run (leave empty = latest on main)"
+        required: false
+      draft:
+        description: "Create as draft?"
+        type: boolean
+        default: true
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Pick build run ID
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ -z "${{ github.event.inputs.build_run_id }}" ]]; then
+            RUN=$(gh run list --repo "$REPO" \
+                               --workflow build.yml \
+                               -b main \
+                               -s success \
+                               -L 1 \
+                               --json databaseId \
+                               -q '.[0].databaseId')
+          else
+            RUN="${{ github.event.inputs.build_run_id }}"
+          fi
+          if [[ -z "$RUN" ]]; then
+            echo "::error::No suitable build run found."
+            exit 1
+          fi
+          echo "run_id=$RUN" >> "$GITHUB_OUTPUT"
+
+      - name: Get commit SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          SHA=$(gh run view "${{ steps.pick.outputs.run_id }}" \
+                 --repo "$REPO" \
+                 --json headSha \
+                 -q .headSha)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Read version
+        id: ver
+        run: |
+          VERSION=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' native/Cargo.toml)
+          [[ -n "$VERSION" ]] || { echo "::error::No version in native/Cargo.toml"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Get release date (Europe/Berlin)
+        id: rel_date
+        run: |
+          echo "date=$(TZ=Europe/Berlin date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release tag does not already exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v${VERSION}"
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "::error::Release with tag $TAG already exists."
+            exit 1
+          fi
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ steps.pick.outputs.run_id }}
+          path: release-assets
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pick livi-link assets run ID
+        id: tool
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN=$(gh run list --repo "$REPO" \
+                             --workflow livi-link.yml \
+                             -s success \
+                             -L 1 \
+                             --json databaseId \
+                             -q '.[0].databaseId')
+          echo "run_id=$RUN" >> "$GITHUB_OUTPUT"
+
+      - name: Download the LIVI Link tool
+        if: steps.tool.outputs.run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ steps.tool.outputs.run_id }}
+          pattern: livi-link-provision-*
+          path: release-assets
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add the LIVI Link firmware
+        run: bash scripts/livi-link/stage-firmware.sh release-assets
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          REL_DATE: ${{ steps.rel_date.outputs.date }}
+          DRAFT: ${{ github.event.inputs.draft }}
+        run: |
+          TAG="v${VERSION}"
+
+          args=(
+            "$TAG"
+            --repo "$REPO"
+            --target "${{ steps.sha.outputs.sha }}"
+            --title "v${VERSION} (${REL_DATE})"
+            --notes "## Release Notes – v${VERSION}
+
+          ### Fix
+
+          ### Improvements
+
+          ### Feature
+
+          ### Chores"
+          )
+
+          if [[ "$DRAFT" == "true" ]]; then
+            args+=(--draft)
+          fi
+
+          while IFS= read -r -d '' file; do
+            args+=("$file")
+          done < <(find release-assets -type f -print0)
+
+          gh release create "${args[@]}"
